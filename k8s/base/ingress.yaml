@@ -1,0 +1,27 @@
+# Requires: nginx ingress controller + cert-manager (see README)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: shopkit
+  namespace: shopkit
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - shop.example.com     # ← replace with your domain
+      secretName: shopkit-tls
+  rules:
+    - host: shop.example.com   # ← replace with your domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: client
+                port:
+                  number: 80

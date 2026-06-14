@@ -1,0 +1,30 @@
+.products-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 32px;
+  flex-wrap: wrap;
+}
+
+.products-header h1 { font-size: 28px; font-weight: 700; }
+
+.products-filters { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.search-input { min-width: 220px; }
+
+.products-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 20px;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 40px;
+  font-size: 14px;
+  color: var(--muted);
+}

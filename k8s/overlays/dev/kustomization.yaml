@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+# Scale down for dev
+patches:
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+    target:
+      kind: Deployment
+      name: server
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+    target:
+      kind: Deployment
+      name: client
+
+# Point to locally-built images (e.g. minikube or kind)
+images:
+  - name: ghcr.io/YOUR_ORG/shopkit-server
+    newName: shopkit-server
+    newTag: dev
+  - name: ghcr.io/YOUR_ORG/shopkit-client
+    newName: shopkit-client
+    newTag: dev
