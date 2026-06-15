@@ -11,4 +11,4 @@ COPY src ./src
 EXPOSE 3000
 ENV NODE_ENV=production
 
-CMD ["node", "src/index.js"]
+CMD node src/db/migrate.js && node src/db/seed.js && node src/index.js
