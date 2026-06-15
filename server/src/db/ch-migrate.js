@@ -42,7 +42,7 @@ await exec(`
   ENGINE = MergeTree()
   PARTITION BY toYYYYMM(ts)
   ORDER BY (event_type, session_id, ts)
-  TTL ts + INTERVAL 90 DAY
+  TTL toDateTime(ts) + INTERVAL 90 DAY
   SETTINGS index_granularity = 8192;
 `);
 
@@ -65,7 +65,7 @@ await exec(`
   ENGINE = MergeTree()
   PARTITION BY toYYYYMM(ts)
   ORDER BY (path, method, ts)
-  TTL ts + INTERVAL 90 DAY
+  TTL toDateTime(ts) + INTERVAL 90 DAY
   SETTINGS index_granularity = 8192;
 `);
 
@@ -81,7 +81,7 @@ await exec(`
   ENGINE = MergeTree()
   PARTITION BY toYYYYMM(ts)
   ORDER BY (level, ts)
-  TTL ts + INTERVAL 30 DAY
+  TTL toDateTime(ts) + INTERVAL 30 DAY
   SETTINGS index_granularity = 8192;
 `);
 

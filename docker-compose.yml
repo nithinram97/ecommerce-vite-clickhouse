@@ -48,6 +48,7 @@ services:
     command: >
       sh -c "node src/db/migrate.js && node src/db/ch-migrate.js && node src/db/seed.js"
     environment:
+      NODE_ENV: development          # prevents pool.js from requiring SSL
       DATABASE_URL: postgresql://postgres:changeme@postgres:5432/ecommerce
       CLICKHOUSE_URL: http://clickhouse:8123
       CLICKHOUSE_DB: shopkit

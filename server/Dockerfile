@@ -9,7 +9,9 @@ RUN npm install --omit=dev
 COPY src ./src
 
 EXPOSE 3000
-ENV NODE_ENV=production
+# NODE_ENV is intentionally NOT set here — it is injected by docker-compose
+# (development for local, production for prod deployments) so that the same
+# image works correctly in both environments without rebuilding.
 
 # Only run the server — migrations are handled by the migrate service
 CMD ["node", "src/index.js"]
