@@ -11,4 +11,5 @@ COPY src ./src
 EXPOSE 3000
 ENV NODE_ENV=production
 
-CMD node src/db/migrate.js && node src/db/seed.js && node src/index.js
+# Only run the server — migrations are handled by the migrate service
+CMD ["node", "src/index.js"]

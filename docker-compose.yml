@@ -1,5 +1,7 @@
 version: "3.9"
+
 services:
+  # ── App: PostgreSQL ─────────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     environment:
@@ -13,8 +15,11 @@ services:
     healthcheck:
       test: [CMD, pg_isready, -U, postgres]
       interval: 5s
-      retries: 5
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
+  # ── App: ClickHouse (app analytics tables: shopkit.*) ───────────────────────
   clickhouse:
     image: clickhouse/clickhouse-server:24.6-alpine
     environment:
@@ -31,12 +36,31 @@ services:
         soft: 262144
         hard: 262144
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping || exit 1"]
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
       start_period: 30s
 
+  # ── App: one-shot migration (exits after running) ───────────────────────────
+  migrate:
+    build: ./server
+    command: >
+      sh -c "node src/db/migrate.js && node src/db/ch-migrate.js && node src/db/seed.js"
+    environment:
+      DATABASE_URL: postgresql://postgres:changeme@postgres:5432/ecommerce
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_DB: shopkit
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: changeme
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    restart: "no"
+
+  # ── App: Express server ─────────────────────────────────────────────────────
   server:
     build: ./server
     ports:
@@ -57,6 +81,7 @@ services:
     volumes:
       - ./server/src:/app/src
 
+  # ── App: Vite/React client ──────────────────────────────────────────────────
   client:
     build: ./client
     ports:
@@ -64,6 +89,33 @@ services:
     depends_on:
       - server
 
+  # ── ClickStack all-in-one (HyperDX UI + OTel collector + its own CH) ────────
+  # Docs: https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started/oss
+  #
+  # This bundles everything ClickStack needs in one image:
+  #   - HyperDX web UI   → http://localhost:8080  (create account on first visit)
+  #   - OTel gRPC        → localhost:4317
+  #   - OTel HTTP        → localhost:4318
+  #   - Its own internal ClickHouse on port 8124 (not exposed externally)
+  #
+  # Data is persisted in named volumes so dashboards/settings survive restarts.
+  clickstack:
+    image: clickhouse/clickstack-all-in-one:latest
+    command: clickstack
+    ports:
+      - "8080:8080"    # HyperDX UI  →  open this in your browser
+      - "4317:4317"    # OTLP gRPC   →  send traces/logs here
+      - "4318:4318"    # OTLP HTTP   →  send traces/logs here
+      - "8124:8123"    # ClickStack's internal CH HTTP (optional, for direct SQL)
+    volumes:
+      - clickstack_db:/data/db
+      - clickstack_ch_data:/var/lib/clickhouse
+      - clickstack_ch_logs:/var/log/clickhouse-server
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   clickhouse_data:
+  clickstack_db:
+  clickstack_ch_data:
+  clickstack_ch_logs:
