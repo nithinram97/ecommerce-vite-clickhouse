@@ -1,17 +1,25 @@
 FROM node:20-alpine AS base
 WORKDIR /app
 
-# Install deps
 COPY package.json ./
-RUN npm install --omit=dev
 
-# Copy source
+# In development we need devDependencies (nodemon) so install everything.
+# In production we skip them with --omit=dev.
+RUN if [ "$NODE_ENV" = "production" ]; then \
+      npm install --omit=dev; \
+    else \
+      npm install; \
+    fi
+
 COPY src ./src
 
 EXPOSE 3000
-# NODE_ENV is intentionally NOT set here — it is injected by docker-compose
-# (development for local, production for prod deployments) so that the same
-# image works correctly in both environments without rebuilding.
 
-# Only run the server — migrations are handled by the migrate service
-CMD ["node", "src/index.js"]
+# Use nodemon in development so file syncs from `docker compose watch` trigger
+# automatic restarts without a full image rebuild.
+# In production, run node directly.
+CMD if [ "$NODE_ENV" = "production" ]; then \
+      node src/index.js; \
+    else \
+      npx nodemon --watch src src/index.js; \
+    fi

@@ -48,7 +48,7 @@ services:
     command: >
       sh -c "node src/db/migrate.js && node src/db/ch-migrate.js && node src/db/seed.js"
     environment:
-      NODE_ENV: development          # prevents pool.js from requiring SSL
+      NODE_ENV: development
       DATABASE_URL: postgresql://postgres:changeme@postgres:5432/ecommerce
       CLICKHOUSE_URL: http://clickhouse:8123
       CLICKHOUSE_DB: shopkit
@@ -74,13 +74,33 @@ services:
       CLICKHOUSE_DB: shopkit
       CLICKHOUSE_USER: default
       CLICKHOUSE_PASSWORD: changeme
+      # OpenTelemetry -> ClickStack/HyperDX (logs visible at http://localhost:8080)
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://clickstack:4318
+      OTEL_SERVICE_NAME: ecommerce-server
+      OTEL_SERVICE_VERSION: "1.0.0"
+      # Get this from HyperDX UI → Team Settings → API Keys
+      # Format must be: Authorization=Bearer <YOUR_API_KEY>
+      OTEL_EXPORTER_OTLP_HEADERS: ${HYPERDX_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
       clickhouse:
         condition: service_healthy
-    volumes:
-      - ./server/src:/app/src
+      clickstack:
+        condition: service_started
+    develop:
+      watch:
+        # Sync source files instantly — no rebuild needed (nodemon picks up changes)
+        - action: sync
+          path: ./server/src
+          target: /app/src
+          ignore:
+            - node_modules/
+        # Rebuild image if dependencies change
+        - action: rebuild
+          path: ./server/package.json
+        - action: rebuild
+          path: ./server/package-lock.json
 
   # ── App: Vite/React client ──────────────────────────────────────────────────
   client:
@@ -89,17 +109,25 @@ services:
       - "5173:80"
     depends_on:
       - server
+    develop:
+      watch:
+        # Rebuild the client image on any source change
+        # (Vite builds a static bundle — no dev server inside the container)
+        - action: rebuild
+          path: ./client/src
+        # Rebuild if config or deps change
+        - action: rebuild
+          path: ./client/package.json
+        - action: rebuild
+          path: ./client/vite.config.js
 
   # ── ClickStack all-in-one (HyperDX UI + OTel collector + its own CH) ────────
   # Docs: https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started/oss
   #
-  # This bundles everything ClickStack needs in one image:
   #   - HyperDX web UI   → http://localhost:8080  (create account on first visit)
   #   - OTel gRPC        → localhost:4317
   #   - OTel HTTP        → localhost:4318
   #   - Its own internal ClickHouse on port 8124 (not exposed externally)
-  #
-  # Data is persisted in named volumes so dashboards/settings survive restarts.
   clickstack:
     image: clickhouse/clickstack-all-in-one:latest
     command: clickstack

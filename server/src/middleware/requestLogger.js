@@ -1,15 +1,15 @@
 /**
  * requestLogger.js
- * Express middleware — fires after the response is sent, inserts one row into
- * ClickHouse server_logs. Non-blocking: failures are swallowed so a CH outage
- * never affects the API.
+ * Express middleware — logs every HTTP request to HyperDX (ClickStack)
+ * via OTLP, and keeps a copy in ClickHouse server_logs for raw analytics.
  *
- * Sensitive fields (password, token) are stripped from the request body before
- * storage.
+ * Non-blocking: both exports are fire-and-forget so an outage in either
+ * sink never affects API response times.
  */
 
 import { randomUUID } from 'crypto';
 import ch from '../db/ch-client.js';
+import { sendLog } from '../utils/otel.js';
 
 const DB = process.env.CLICKHOUSE_DB || 'shopkit';
 
@@ -25,34 +25,50 @@ function sanitise(body) {
 }
 
 export function requestLogger(req, res, next) {
-  const start = Date.now();
+  const start     = Date.now();
   const requestId = randomUUID();
-  req.requestId = requestId;
+  req.requestId   = requestId;
 
   res.on('finish', () => {
-    const duration = Date.now() - start;
-    const userId = req.user?.id ?? '';
+    const duration  = Date.now() - start;
+    const userId    = req.user?.id ?? '';
+    const status    = res.statusCode;
+    const level     = status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info';
 
-    const row = {
-      method:        req.method,
-      path:          req.path,
-      status:        res.statusCode,
-      user_id:       userId,
-      ip:            req.ip || req.socket?.remoteAddress || '',
-      user_agent:    req.headers['user-agent'] || '',
-      referer:       req.headers['referer'] || '',
-      duration_ms:   duration,
-      request_body:  req.method !== 'GET'
-                       ? JSON.stringify(sanitise(req.body) ?? {})
-                       : '',
-      response_size: parseInt(res.getHeader('content-length') || '0', 10) || 0,
+    const attrs = {
+      'http.method':      req.method,
+      'http.target':      req.path,
+      'http.status_code': String(status),
+      'http.user_agent':  req.headers['user-agent'] || '',
+      'http.referer':     req.headers['referer'] || '',
+      'http.duration_ms': String(duration),
+      'net.peer.ip':      req.ip || req.socket?.remoteAddress || '',
+      'enduser.id':       userId,
+      'request.id':       requestId,
     };
 
+    // ── 1. HyperDX via OTLP ─────────────────────────────────────────────
+    sendLog(level, `${req.method} ${req.path} ${status} ${duration}ms`, attrs);
+
+    // ── 2. ClickHouse server_logs (raw analytics) ────────────────────────
     ch.insert({
       table: `${DB}.server_logs`,
-      values: [row],
+      values: [{
+        method:        req.method,
+        path:          req.path,
+        status,
+        user_id:       userId,
+        ip:            attrs['net.peer.ip'],
+        user_agent:    attrs['http.user_agent'],
+        referer:       attrs['http.referer'],
+        duration_ms:   duration,
+        request_body:  req.method !== 'GET'
+                         ? JSON.stringify(sanitise(req.body) ?? {})
+                         : '',
+        response_size: parseInt(res.getHeader('content-length') || '0', 10) || 0,
+      }],
       format: 'JSONEachRow',
-    }).catch(() => { /* silent — CH outage must not surface to callers */ });
+    }).catch(() => {});
   });
 
   next();
