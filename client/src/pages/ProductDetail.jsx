@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/index.js';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { useCart } from '../hooks/useCart.jsx';
+import analytics from '../analytics.js';
 import './ProductDetail.css';
 
 export default function ProductDetail() {
@@ -16,7 +17,15 @@ export default function ProductDetail() {
   const [msg, setMsg] = useState('');
 
   useEffect(() => {
-    api.getProduct(id).then(setProduct).catch(() => navigate('/products'));
+    api.getProduct(id).then((p) => {
+      setProduct(p);
+      analytics.track('product_view', {
+        product_id: p.id,
+        product_name: p.name,
+        price: p.price,
+        category: p.category,
+      });
+    }).catch(() => navigate('/products'));
   }, [id]);
 
   const handleAdd = async () => {
@@ -24,6 +33,13 @@ export default function ProductDetail() {
     setAdding(true);
     try {
       await addToCart(product.id, qty);
+      analytics.track('add_to_cart', {
+        product_id: product.id,
+        product_name: product.name,
+        price: product.price,
+        quantity: qty,
+        source: 'product_detail',
+      });
       setMsg('Added to cart!');
       setTimeout(() => setMsg(''), 2000);
     } catch (e) {

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
+import analytics from '../analytics.js';
 import './Auth.css';
 
 export default function Login() {
@@ -13,13 +14,15 @@ export default function Login() {
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    e?.preventDefault();
     setLoading(true);
     setError('');
     try {
       await login(form.email, form.password);
+      analytics.track('login', { method: 'email' });
       navigate('/products');
     } catch (err) {
+      analytics.track('login_error', { error: err.message });
       setError(err.message);
     } finally {
       setLoading(false);

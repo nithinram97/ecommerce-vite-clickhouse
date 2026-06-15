@@ -28,7 +28,7 @@ const seed = async () => {
       { name: 'Leather Wallet', description: 'Slim genuine leather bifold wallet', price: 49.99, stock: 100, category: 'Accessories', image_url: 'https://images.unsplash.com/photo-1627123424574-724758594e93?w=400' },
       { name: 'Running Shoes', description: 'Lightweight performance running shoes', price: 129.99, stock: 75, category: 'Footwear', image_url: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400' },
       { name: 'Ceramic Coffee Mug', description: 'Handcrafted 12oz ceramic mug', price: 24.99, stock: 200, category: 'Kitchen', image_url: 'https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?w=400' },
-      { name: 'Mechanical Keyboard', description: 'Compact TKL mechanical keyboard', price: 149.99, stock: 30, category: 'Electronics', image_url: 'https://unsplash.com/photos/ZByWaPXD2fU/&w=1920' },
+      { name: 'Mechanical Keyboard', description: 'Compact TKL mechanical keyboard', price: 149.99, stock: 30, category: 'Electronics', image_url: 'https://images.unsplash.com/photo-1601445638532-1e77ccdc0685?w=400' },
       { name: 'Canvas Backpack', description: 'Durable everyday carry backpack', price: 79.99, stock: 60, category: 'Accessories', image_url: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=400' },
     ];
 

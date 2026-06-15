@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ch-migrate
+  namespace: shopkit
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        # Wait until ClickHouse HTTP /ping returns 200
+        - name: wait-for-clickhouse
+          image: curlimages/curl:8.8.0
+          command:
+            - sh
+            - -c
+            - |
+              until curl -sf "http://clickhouse-svc:8123/ping"; do
+                echo "waiting for clickhouse…"; sleep 3
+              done
+      containers:
+        - name: ch-migrate
+          image: ghcr.io/YOUR_ORG/shopkit-server:latest   # ← update
+          command: ["node", "src/db/ch-migrate.js"]
+          env:
+            - name: CLICKHOUSE_URL
+              value: http://clickhouse-svc:8123
+            - name: CLICKHOUSE_DB
+              value: shopkit
+            - name: CLICKHOUSE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: clickhouse-secret
+                  key: username
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: clickhouse-secret
+                  key: password

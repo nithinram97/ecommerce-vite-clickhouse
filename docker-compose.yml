@@ -15,6 +15,22 @@ services:
       interval: 5s
       retries: 5
 
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.6-alpine
+    environment:
+      CLICKHOUSE_DB: shopkit
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: changeme
+    ports:
+      - "8123:8123"   # HTTP (curl / client SDK)
+      - "9000:9000"   # native TCP
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    healthcheck:
+      test: [CMD, wget, --spider, -q, "http://localhost:8123/ping"]
+      interval: 5s
+      retries: 10
+
   server:
     build: ./server
     ports:
@@ -23,11 +39,17 @@ services:
       DATABASE_URL: postgresql://postgres:changeme@postgres:5432/ecommerce
       JWT_SECRET: local-dev-secret
       NODE_ENV: development
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_DB: shopkit
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: changeme
     depends_on:
       postgres:
         condition: service_healthy
+      clickhouse:
+        condition: service_healthy
     volumes:
-      - ./server/src:/app/src   # hot reload in dev; remove in prod
+      - ./server/src:/app/src
 
   client:
     build: ./client
@@ -38,3 +60,4 @@ services:
 
 volumes:
   postgres_data:
+  clickhouse_data:

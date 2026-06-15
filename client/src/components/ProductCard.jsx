@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { useCart } from '../hooks/useCart.jsx';
 import { useState } from 'react';
+import analytics from '../analytics.js';
 import './ProductCard.css';
 
 export default function ProductCard({ product }) {
@@ -13,7 +14,18 @@ export default function ProductCard({ product }) {
     e.preventDefault();
     if (!user) { window.location.href = '/login'; return; }
     setAdding(true);
-    try { await addToCart(product.id); } finally { setAdding(false); }
+    try {
+      await addToCart(product.id);
+      analytics.track('add_to_cart', {
+        product_id: product.id,
+        product_name: product.name,
+        price: product.price,
+        category: product.category,
+        source: 'product_card',
+      });
+    } finally {
+      setAdding(false);
+    }
   };
 
   return (

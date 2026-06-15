@@ -5,6 +5,8 @@ resources:
   - namespace.yaml
   - secrets.yaml
   - postgres.yaml
+  - clickhouse.yaml
+  - ch-migrate-job.yaml
   - server.yaml
   - client.yaml
   - ingress.yaml

@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './hooks/useAuth.jsx';
 import { CartProvider } from './hooks/useCart.jsx';
 import Navbar from './components/Navbar.jsx';
@@ -13,13 +13,24 @@ import OrderDetail from './pages/OrderDetail.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
 import Admin from './pages/Admin.jsx';
+import { trackPageView } from './analytics.js';
 import './index.css';
+
+// Tracks a pageview on every route change
+function PageViewTracker() {
+  const location = useLocation();
+  useEffect(() => {
+    trackPageView(location.pathname);
+  }, [location.pathname]);
+  return null;
+}
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <AuthProvider>
         <CartProvider>
+          <PageViewTracker />
           <Navbar />
           <Routes>
             <Route path="/" element={<Home />} />

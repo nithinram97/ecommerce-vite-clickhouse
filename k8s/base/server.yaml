@@ -72,6 +72,20 @@ spec:
                 secretKeyRef:
                   name: server-secret
                   key: database-url
+            - name: CLICKHOUSE_URL
+              value: http://clickhouse-svc:8123
+            - name: CLICKHOUSE_DB
+              value: shopkit
+            - name: CLICKHOUSE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: clickhouse-secret
+                  key: username
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: clickhouse-secret
+                  key: password
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:

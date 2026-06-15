@@ -119,6 +119,85 @@ docker compose up --build
 
 ---
 
+
+## ClickHouse (analytics & logs)
+
+ClickHouse stores three streams of data:
+
+| Table | What goes in |
+|-------|-------------|
+| `click_events` | Every browser interaction — pageviews, clicks, add-to-cart, checkout, errors, and all fetch() calls to `/api/*` with latency |
+| `server_logs` | Every inbound HTTP request — method, path, status, user, IP, duration, sanitised body |
+| `app_logs` | Structured log lines from the Node.js process (info / warn / error) |
+
+### Local setup
+
+```bash
+# ClickHouse starts automatically with docker-compose
+docker compose up --build
+
+# Run the schema migration (creates DB + 3 tables)
+npm run db:ch-migrate
+
+# Verify
+curl 'http://localhost:8123/?query=SHOW+TABLES+FROM+shopkit'
+```
+
+### Useful queries
+
+```sql
+-- Top pages by views (last 7 days)
+SELECT page, count() AS views
+FROM shopkit.click_events
+WHERE event_type = 'pageview' AND ts > now() - INTERVAL 7 DAY
+GROUP BY page ORDER BY views DESC LIMIT 20;
+
+-- API call p50 / p95 latency by endpoint
+SELECT
+  target,
+  quantile(0.5)(duration_ms)  AS p50_ms,
+  quantile(0.95)(duration_ms) AS p95_ms,
+  count() AS calls
+FROM shopkit.click_events
+WHERE event_type = 'api_call' AND ts > now() - INTERVAL 1 DAY
+GROUP BY target ORDER BY calls DESC;
+
+-- Error rate by path (server-side)
+SELECT path, status, count() AS n
+FROM shopkit.server_logs
+WHERE status >= 400 AND ts > now() - INTERVAL 1 DAY
+GROUP BY path, status ORDER BY n DESC;
+
+-- Recent app errors
+SELECT ts, message, context
+FROM shopkit.app_logs
+WHERE level = 'error'
+ORDER BY ts DESC LIMIT 50;
+
+-- Funnel: product_view → add_to_cart → checkout_complete
+SELECT
+  event_type,
+  uniqExact(session_id) AS sessions
+FROM shopkit.click_events
+WHERE event_type IN ('product_view','add_to_cart','checkout_complete')
+  AND ts > now() - INTERVAL 30 DAY
+GROUP BY event_type;
+```
+
+### Kubernetes secrets
+
+```bash
+# Generate the password SHA-256 (required by users.xml)
+PW=yourpassword
+SHA=$(echo -n "$PW" | sha256sum | awk '{print $1}')
+SHA_B64=$(echo -n "$SHA" | base64)
+
+kubectl create secret generic clickhouse-secret -n shopkit \
+  --from-literal=username=default \
+  --from-literal=password="$PW" \
+  --from-literal=password-sha256="$SHA_B64"
+```
+
 ## Kubernetes
 
 ```

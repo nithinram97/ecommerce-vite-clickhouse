@@ -1,6 +1,7 @@
 import { useCart } from '../hooks/useCart.jsx';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
+import analytics from '../analytics.js';
 import './Cart.css';
 
 export default function Cart() {
@@ -9,13 +10,32 @@ export default function Cart() {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
+  const handleRemove = async (item) => {
+    analytics.track('remove_from_cart', {
+      product_id: item.product_id,
+      product_name: item.name,
+      price: item.price,
+    });
+    await removeFromCart(item.product_id);
+  };
+
   const handleCheckout = async () => {
+    analytics.track('checkout_start', {
+      item_count: cart.items.reduce((s, i) => s + i.quantity, 0),
+      total: cart.total,
+    });
     setOrdering(true);
     setError('');
     try {
       const order = await checkout();
+      analytics.track('checkout_complete', {
+        order_id: order.id,
+        total: order.total,
+        item_count: order.items?.length ?? cart.items.length,
+      });
       navigate(`/orders/${order.id}`);
     } catch (e) {
+      analytics.track('checkout_error', { error: e.message });
       setError(e.message);
     } finally {
       setOrdering(false);
@@ -47,7 +67,7 @@ export default function Cart() {
                     <button className="btn btn-outline" onClick={() => updateQty(item.product_id, item.quantity + 1)} disabled={item.quantity >= item.stock}>+</button>
                   </div>
                   <p className="ci-subtotal">${(item.price * item.quantity).toFixed(2)}</p>
-                  <button className="btn btn-outline ci-remove" onClick={() => removeFromCart(item.product_id)}>✕</button>
+                  <button className="btn btn-outline ci-remove" onClick={() => handleRemove(item)}>✕</button>
                 </div>
               ))}
             </div>

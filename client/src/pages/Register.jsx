@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
+import analytics from '../analytics.js';
 import './Auth.css';
 
 export default function Register() {
@@ -17,8 +18,10 @@ export default function Register() {
     setError('');
     try {
       await register(form.email, form.password, form.name);
+      analytics.track('register', { method: 'email' });
       navigate('/products');
     } catch (err) {
+      analytics.track('register_error', { error: err.message });
       setError(err.message);
     } finally {
       setLoading(false);
