@@ -14,6 +14,7 @@ import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
 import Admin from './pages/Admin.jsx';
 import { trackPageView } from './analytics.js';
+import ChatWidget from './components/ChatWidget.jsx';
 import './index.css';
 
 // Tracks a pageview on every route change
@@ -32,6 +33,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <CartProvider>
           <PageViewTracker />
           <Navbar />
+          <ChatWidget />
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/products" element={<Products />} />

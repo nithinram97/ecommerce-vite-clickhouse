@@ -20,3 +20,14 @@ export const requireAdmin = (req, res, next) => {
   }
   next();
 };
+
+// Like authenticate but never rejects — attaches user if token present, otherwise continues anonymously
+export const optionalAuth = (req, _res, next) => {
+  const auth = req.headers.authorization;
+  if (auth?.startsWith('Bearer ')) {
+    try {
+      req.user = jwt.verify(auth.slice(7), process.env.JWT_SECRET);
+    } catch { /* ignore invalid tokens */ }
+  }
+  next();
+};

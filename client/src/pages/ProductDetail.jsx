@@ -4,6 +4,7 @@ import { api } from '../api/index.js';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { useCart } from '../hooks/useCart.jsx';
 import analytics from '../analytics.js';
+import ChatWidget from '../components/ChatWidget.jsx';
 import './ProductDetail.css';
 
 export default function ProductDetail() {
@@ -82,6 +83,8 @@ export default function ProductDetail() {
           {msg && <p style={{ color: msg.startsWith('Added') ? 'var(--success)' : 'var(--danger)', marginTop: 8 }}>{msg}</p>}
         </div>
       </div>
+      {/* Pass product so the AI has full context about what the customer is viewing */}
+      <ChatWidget product={product} />
     </div>
   );
 }

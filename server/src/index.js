@@ -7,6 +7,7 @@ import productRoutes  from './routes/products.js';
 import cartRoutes     from './routes/cart.js';
 import orderRoutes    from './routes/orders.js';
 import eventRoutes    from './routes/events.js';
+import chatRoutes     from './routes/chat.js';
 
 import { requestLogger } from './middleware/requestLogger.js';
 import log               from './utils/logger.js';
@@ -19,19 +20,17 @@ const PORT = process.env.PORT || 3000;
 app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
 app.use(express.json());
 
-// ── Observability: log every request to ClickHouse ──────────────────────────
 app.use(requestLogger);
 
-// ── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth',     authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/cart',     cartRoutes);
 app.use('/api/orders',   orderRoutes);
-app.use('/api/events',   eventRoutes);      // client-side event ingest
+app.use('/api/events',   eventRoutes);
+app.use('/api/chat',     chatRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', time: new Date() }));
 
-// ── Global error handler: also logs to ClickHouse ───────────────────────────
 app.use((err, req, res, _next) => {
   log.error('Unhandled error', {
     message: err.message,
