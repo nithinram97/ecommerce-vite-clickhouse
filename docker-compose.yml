@@ -176,8 +176,9 @@ services:
   librechat:
     image: ghcr.io/danny-avila/librechat:latest
     restart: unless-stopped
+    user: root
     ports:
-      - "3080:3080"    # LibreChat UI (optional — mainly used via API)
+      - "3080:3080"
     environment:
       HOST: 0.0.0.0
       PORT: 3080
@@ -186,12 +187,10 @@ services:
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-meili-master-key-changeme}
       JWT_SECRET: ${JWT_SECRET:-librechat-jwt-secret-changeme}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-librechat-jwt-refresh-changeme}
-      # ── AI provider keys — add whichever you use ──────────────────────────
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       LIBRECHAT_MODEL: ${LIBRECHAT_MODEL:-gpt-4o-mini}
-      GOOGLE_KEY: ${GOOGLE_KEY:-}           # ← ADD THIS
+      GOOGLE_KEY: ${GOOGLE_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-} 
-      # ── Allow all origins so our Express proxy can call it ────────────────
       ALLOW_REGISTRATION: "true"
       ALLOW_SOCIAL_LOGIN: "false"
     depends_on:
@@ -203,11 +202,13 @@ services:
       - librechat_uploads:/app/client/public/images
       - librechat_logs:/app/api/logs
       - ./librechat.yaml:/app/librechat.yaml:ro
-    # uv is needed to run the mcp-clickhouse Python package via uvx
+    # FIXED: Added curl to the alpine package installer
     entrypoint: >
-      sh -c "curl -LsSf https://astral.sh/uv/install.sh | sh &&
+      sh -c "apk add --no-cache gcc musl-dev python3-dev curl &&
+             curl -LsSf https://astral.sh/uv/install.sh | sh &&
              export PATH=$HOME/.local/bin:$PATH &&
-             node api/server/index.js" 
+             uvx mcp-clickhouse --help 2>/dev/null || true &&
+             node api/server/index.js"
 
 
 volumes:
