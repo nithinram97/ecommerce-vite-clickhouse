@@ -1,130 +1,79 @@
-/**
- * /api/chat  — Proxy to LibreChat's OpenAI-compatible endpoint.
- *
- * The client sends:
- *   POST /api/chat
- *   { messages: [{role, content}], context?: { product?, cartItems?, orders? } }
- *
- * This route:
- *  1. Injects a system prompt with live store context (product, cart, etc.)
- *  2. Streams the LibreChat response back to the browser using SSE so the
- *     UI can render tokens as they arrive.
- *  3. Optionally authenticates the user so the AI knows their name / order history.
- */
-
 import { Router } from 'express';
 import { optionalAuth } from '../middleware/auth.js';
 import log from '../utils/logger.js';
 
 const router = Router();
 
-const LIBRECHAT_URL     = process.env.LIBRECHAT_URL     || 'http://librechat:3080';
-const LIBRECHAT_API_KEY = process.env.LIBRECHAT_API_KEY || 'user_librechat';
-// Model must match one configured in librechat.yaml
-const LIBRECHAT_MODEL   = process.env.LIBRECHAT_MODEL   || 'gpt-4o-mini';
+const GOOGLE_KEY = process.env.GOOGLE_KEY;
+const MODEL      = process.env.LIBRECHAT_MODEL || 'gemini-1.5-flash';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
 function buildSystemPrompt(context = {}, user = null) {
   const lines = [
     'You are a friendly and helpful shopping assistant for ShopKit, an online store.',
-    'You help customers find products, answer questions about their orders, and guide them through checkout.',
-    'Be concise, warm, and proactive. If a customer seems stuck, suggest next steps.',
-    'Never make up prices, stock levels, or order details — only use the context provided below.',
-    '',
+    'Help customers find products, answer questions about orders, and guide them through checkout.',
+    'Be concise and warm. Never make up prices, stock levels, or order details — only use context below.',
   ];
-
-  if (user) {
-    lines.push(`The customer's name is ${user.name}. Their email is ${user.email}.`);
-  }
-
+  if (user) lines.push(`Customer name: ${user.name}. Email: ${user.email}.`);
   if (context.product) {
     const p = context.product;
-    lines.push('');
-    lines.push('## Product the customer is currently viewing:');
-    lines.push(`- Name: ${p.name}`);
-    lines.push(`- Price: $${parseFloat(p.price).toFixed(2)}`);
-    lines.push(`- Category: ${p.category || 'Uncategorised'}`);
-    lines.push(`- Description: ${p.description || 'No description'}`);
-    lines.push(`- Stock: ${p.stock > 0 ? `${p.stock} units available` : 'Out of stock'}`);
+    lines.push(`\nProduct being viewed: ${p.name} — $${parseFloat(p.price).toFixed(2)}, ${p.stock > 0 ? p.stock + ' in stock' : 'OUT OF STOCK'}. ${p.description || ''}`);
   }
-
   if (context.cartItems?.length) {
-    lines.push('');
-    lines.push('## Customer\'s current cart:');
-    for (const item of context.cartItems) {
-      lines.push(`- ${item.name} × ${item.quantity} @ $${parseFloat(item.price).toFixed(2)}`);
-    }
-    lines.push(`Cart total: $${context.cartTotal?.toFixed(2) ?? '?'}`);
+    lines.push('\nCart: ' + context.cartItems.map(i => `${i.name} x${i.quantity}`).join(', '));
+    lines.push(`Cart total: $${context.cartTotal?.toFixed(2)}`);
   }
-
   if (context.recentOrders?.length) {
-    lines.push('');
-    lines.push('## Customer\'s recent orders:');
-    for (const o of context.recentOrders.slice(0, 3)) {
-      lines.push(`- Order #${o.id} — $${parseFloat(o.total).toFixed(2)} — Status: ${o.status} — Placed: ${new Date(o.created_at).toLocaleDateString()}`);
-    }
+    lines.push('\nRecent orders: ' + context.recentOrders.slice(0,3).map(o =>
+      `#${o.id} $${o.total} (${o.status})`).join(', '));
   }
-
-  lines.push('');
-  lines.push('Answer only questions relevant to shopping, products, orders, and the store. Decline unrelated topics politely.');
-
+  lines.push('\nOnly answer shopping-related questions. Decline unrelated topics politely.');
   return lines.join('\n');
 }
 
-// POST /api/chat  — streaming SSE response
+// POST /api/chat
 router.post('/', optionalAuth, async (req, res) => {
   const { messages = [], context = {} } = req.body;
 
+  if (!GOOGLE_KEY) {
+    return res.status(503).json({ error: 'GOOGLE_KEY not set in environment.' });
+  }
   if (!Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: 'messages array is required' });
   }
 
   const systemPrompt = buildSystemPrompt(context, req.user ?? null);
 
-  const payload = {
-    model:  LIBRECHAT_MODEL,
-    stream: true,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      ...messages.slice(-20),   // keep last 20 turns to stay within context limits
-    ],
+  // Gemini uses "contents" array; system instruction is separate
+  const body = {
+    system_instruction: { parts: [{ text: systemPrompt }] },
+    contents: messages.slice(-20).map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    })),
+    generationConfig: { maxOutputTokens: 1024, temperature: 0.7 },
   };
 
   try {
-    const upstream = await fetch(`${LIBRECHAT_URL}/api/ask/openAI`, {
+    const upstream = await fetch(GEMINI_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${LIBRECHAT_API_KEY}`,
-      },
-      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key' : GOOGLE_KEY},
+      body: JSON.stringify(body),
     });
 
+    const data = await upstream.json();
+
     if (!upstream.ok) {
-      const err = await upstream.text();
-      log.error('LibreChat upstream error', { status: upstream.status, body: err });
-      return res.status(502).json({ error: 'AI service unavailable' });
+      log.error('Gemini API error', { status: upstream.status, data });
+      return res.status(502).json({ error: data.error?.message || 'AI service error' });
     }
 
-    // Forward as SSE
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('X-Accel-Buffering', 'no');   // disable nginx buffering
+    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    res.json({ reply });
 
-    const reader = upstream.body.getReader();
-    const decoder = new TextDecoder();
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      res.write(decoder.decode(value, { stream: true }));
-    }
-
-    res.end();
   } catch (err) {
-    log.error('Chat proxy error', { message: err.message });
-    if (!res.headersSent) {
-      res.status(502).json({ error: 'AI service unavailable' });
-    }
+    log.error('Chat error', { message: err.message });
+    res.status(502).json({ error: 'AI service unavailable' });
   }
 });
 

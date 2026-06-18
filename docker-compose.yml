@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   # ── App: PostgreSQL ─────────────────────────────────────────────────────────
   postgres:
@@ -190,8 +188,9 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-librechat-jwt-refresh-changeme}
       # ── AI provider keys — add whichever you use ──────────────────────────
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      GOOGLE_KEY: ${GOOGLE_KEY:-}
+      LIBRECHAT_MODEL: ${LIBRECHAT_MODEL:-gpt-4o-mini}
+      GOOGLE_KEY: ${GOOGLE_KEY:-}           # ← ADD THIS
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-} 
       # ── Allow all origins so our Express proxy can call it ────────────────
       ALLOW_REGISTRATION: "true"
       ALLOW_SOCIAL_LOGIN: "false"
@@ -203,6 +202,12 @@ services:
     volumes:
       - librechat_uploads:/app/client/public/images
       - librechat_logs:/app/api/logs
+      - ./librechat.yaml:/app/librechat.yaml:ro
+    # uv is needed to run the mcp-clickhouse Python package via uvx
+    entrypoint: >
+      sh -c "curl -LsSf https://astral.sh/uv/install.sh | sh &&
+             export PATH=$HOME/.local/bin:$PATH &&
+             node api/server/index.js" 
 
 
 volumes:

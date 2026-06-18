@@ -86,36 +86,14 @@ export default function ChatWidget({ product = null }) {
         throw new Error('AI service unavailable');
       }
 
-      // Stream SSE tokens
-      const reader  = res.body.getReader();
-      const decoder = new TextDecoder();
-      let   buffer  = '';
-      let   full    = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop(); // keep incomplete line in buffer
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const data = line.slice(6).trim();
-          if (data === '[DONE]') break;
-          try {
-            const json  = JSON.parse(data);
-            const token = json.choices?.[0]?.delta?.content ?? '';
-            full += token;
-            setMessages(prev => {
-              const next = [...prev];
-              next[next.length - 1] = { role: 'assistant', content: full };
-              return next;
-            });
-          } catch { /* skip malformed SSE lines */ }
-        }
-      }
+      // Parse plain JSON response { reply }
+      const data = await res.json();
+      const reply = data.reply ?? '';
+      setMessages(prev => {
+        const next = [...prev];
+        next[next.length - 1] = { role: 'assistant', content: reply };
+        return next;
+      });
     } catch (err) {
       if (err.name === 'AbortError') return;
       setMessages(prev => {
