@@ -5,7 +5,7 @@ import log from '../utils/logger.js';
 const router = Router();
 
 const GOOGLE_KEY = process.env.GOOGLE_KEY;
-const MODEL      = process.env.LIBRECHAT_MODEL || 'gemini-1.5-flash';
+const MODEL      = process.env.LIBRECHAT_MODEL || 'gemini-2.5-flash-lite';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
 function buildSystemPrompt(context = {}, user = null) {
