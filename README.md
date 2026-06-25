@@ -1,6 +1,48 @@
 # ShopKit — Full-Stack E-commerce
 
-Vite + React frontend, Node.js/Express backend, PostgreSQL database.
+A complete e-commerce platform that's also a sandbox for modern observability and AI tooling. Under the hood it's a Vite + React storefront backed by an Express API and PostgreSQL — but layered on top is a full ClickHouse analytics pipeline, an OpenTelemetry/HyperDX logging stack, a Gemini-powered shopping assistant, and an MCP-connected analytics agent that can query your store's behavioral data in plain English. Ship it locally with one `npm run dev`, or all the way to Kubernetes with the included manifests.
+
+## ✨ Features
+
+### 🛍️ Storefront & shopping
+- **Product catalog** — browsable/searchable products with category filters, pagination, and per-product detail pages
+- **Cart & checkout** — persistent server-side cart (`GET/PUT/DELETE /api/cart`) that converts cleanly into an order on checkout
+- **Order history** — customers can review past orders and track status; admins can update order status as it moves through fulfillment
+- **Authentication** — JWT + bcrypt auth with `register` / `login` / `me` endpoints and route-level guards for logged-in vs. admin-only pages
+- **Admin dashboard** — a dedicated `/admin` area for managing the product catalog (create/edit/delete) and reviewing/updating all customer orders
+
+### 🤖 AI shopping assistant
+- **In-app chat widget** — a floating assistant on every page (`ChatWidget.jsx`) that customers can open without leaving the storefront
+- **Context-aware answers** — the assistant is fed live context with every message: the product the customer is currently viewing, their cart contents and running total, and recent order history, so it never has to guess prices or stock
+- **Powered by Gemini** — backend (`/api/chat`) calls Google's Gemini API directly, with a system prompt that scopes the assistant to shopping questions only and instructs it to never fabricate prices, stock, or order details
+- **Conversation-aware** — keeps a rolling window of message history so the assistant maintains context through a multi-turn conversation
+
+### 🧠 Conversational analytics agent (MCP + LibreChat)
+- **Ask your data questions in English** — a second, separate chat surface (LibreChat) hosts a "ClickHouse Analytics Agent" that translates plain-English questions into real, read-only SQL against your ClickHouse warehouse
+- **MCP-powered** — connects to ClickHouse through the Model Context Protocol (`mcp-clickhouse`), so the agent runs actual queries rather than guessing answers
+- **Pre-loaded with house rules** — seeded (`agent-seed.json`) with the exact schema, partition/TTL details, and analytics best practices (always filter on `ts`, use `quantile(0.95)` instead of `avg()` for latency, show the SQL it ran, etc.) so answers are trustworthy out of the box
+- **Answers things like:** "What's the p95 latency on `/api/orders` this week?", "Show me the checkout funnel for the last 30 days," or "Which products get added to cart the most?"
+- **Reusable agent-skills doc** — `agent-skills/AGENTS.md` packages the same schema knowledge as a portable skills file for any agent (or any teammate) that needs to write ClickHouse SQL against this data
+
+### 📊 Full-stack observability & analytics
+- **Three first-class data streams in ClickHouse:**
+  | Table | Captures |
+  |-------|----------|
+  | `click_events` | Every pageview, click, add-to-cart, checkout, error, and instrumented `fetch()` call — with latency |
+  | `server_logs` | Every inbound HTTP request: method, path, status, user, IP, duration |
+  | `app_logs` | Structured info/warn/error log lines straight from the Node process |
+- **Zero-effort client instrumentation** — `analytics.js` auto-captures pageviews, every click (with a CSS-selector-style target label), unhandled JS errors, and unhandled promise rejections — no manual `track()` calls required for the basics
+- **Instrumented `fetch`** — the global `fetch` is monkey-patched so every call to `/api/*` is automatically logged with method, status, and duration, turning the frontend into its own APM
+- **Reliable delivery** — events are batched (flushed every 5s or at 20 events) and flushed via `navigator.sendBeacon` on tab close/hide, so you don't lose the last few seconds of a session
+- **OpenTelemetry log export** — the server ships structured logs to HyperDX/ClickStack over OTLP/HTTP, so request logs, app logs, and traces all land in one observability UI
+- **Ready-made SQL** — the README ships with copy-paste queries for top pages, API p50/p95 latency, error rates by path, and a product-view → add-to-cart → checkout funnel
+
+### 🐳 DevOps & deployment
+- **One-command local stack** — `docker compose up --build` brings up Postgres, ClickHouse, the API, the client, ClickStack/HyperDX, and the LibreChat + MCP analytics agent together
+- **Live-reload in Docker** — Compose `watch` mode rebuilds/syncs the server and client containers on file changes, so containerized dev still feels like local dev
+- **Production-grade Kubernetes manifests** — namespace, secrets, a Postgres `StatefulSet`, `Deployment`s for server/client, an nginx `Ingress` with cert-manager TLS, and `HorizontalPodAutoscaler`s (server scales 2→10, client 2→6)
+- **Environment overlays** — Kustomize `dev` (single replica, local image tags) and `prod` (pinned SHA tags) overlays out of the box
+- **CI/CD pipeline** — GitHub Actions workflow builds and pushes images to GHCR, updates the prod overlay, and rolls out the new version automatically on every push to `main`
 
 ## Stack
 
@@ -10,6 +52,11 @@ Vite + React frontend, Node.js/Express backend, PostgreSQL database.
 | Backend | Node.js, Express 4 |
 | Database | PostgreSQL (via `pg`) |
 | Auth | JWT + bcrypt |
+| Analytics warehouse | ClickHouse |
+| Observability | OpenTelemetry → HyperDX/ClickStack |
+| AI shopping assistant | Google Gemini |
+| Analytics agent | LibreChat + MCP (`mcp-clickhouse`) |
+| Orchestration | Docker Compose (local), Kubernetes + Kustomize (prod) |
 
 ## Project layout
 
@@ -17,15 +64,21 @@ Vite + React frontend, Node.js/Express backend, PostgreSQL database.
 ecommerce/
 ├── client/               # Vite React app
 │   └── src/
+│       ├── analytics.js  # Auto-capturing browser analytics SDK
 │       ├── api/          # Typed API client
-│       ├── components/   # Navbar, ProductCard
+│       ├── components/   # Navbar, ProductCard, ChatWidget (AI assistant)
 │       ├── hooks/        # useAuth, useCart (React context)
 │       └── pages/        # Home, Products, Cart, Orders, Admin …
-└── server/               # Express API
-    └── src/
-        ├── db/           # pool.js, migrate.js, seed.js
-        ├── middleware/   # auth.js (JWT)
-        └── routes/       # auth, products, cart, orders
+├── server/               # Express API
+│   └── src/
+│       ├── db/           # pool.js, migrate.js, seed.js, ch-client.js, ch-migrate.js
+│       ├── middleware/   # auth.js (JWT), requestLogger.js
+│       ├── routes/       # auth, products, cart, orders, chat (Gemini), events (analytics ingest)
+│       └── utils/        # logger.js, otel.js (OTLP export to HyperDX)
+├── agent-skills/         # AGENTS.md — portable ClickHouse schema/SQL skill for agents
+├── agent-seed.json       # LibreChat "ClickHouse Analytics Agent" definition (MCP-powered)
+├── librechat.yaml        # LibreChat config — custom endpoints + mcp-clickhouse server
+└── k8s/                  # Kubernetes manifests (base + dev/prod overlays)
 ```
 
 ## Quick start
@@ -103,6 +156,14 @@ Open http://localhost:5173
 | GET | `/api/orders` | Bearer | My orders (admin: all) |
 | GET | `/api/orders/:id` | Bearer | Order detail |
 | PATCH | `/api/orders/:id/status` | Admin | Update status |
+
+### AI chat & analytics
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/chat` | Optional | AI shopping assistant — pass `{ messages, context }`, calls Gemini |
+| POST | `/api/events` | — | Analytics ingest — batched browser events from `analytics.js` |
+
+Requires `GOOGLE_KEY` (and optionally `LIBRECHAT_MODEL`, default `gemini-2.5-flash-lite`) in `server/.env` for the chat assistant to work.
 
 ## Docker (local / CI)
 
@@ -197,6 +258,19 @@ kubectl create secret generic clickhouse-secret -n shopkit \
   --from-literal=password="$PW" \
   --from-literal=password-sha256="$SHA_B64"
 ```
+
+## Conversational analytics agent (LibreChat + MCP)
+
+`docker compose up --build` also starts **LibreChat** (chat UI, :3080 by default), **MongoDB** and **Meilisearch** (LibreChat's storage/search), and **ClickStack/HyperDX** (observability UI). LibreChat connects to ClickHouse through an MCP server (`mcp-clickhouse`, declared in `librechat.yaml`) running in read-only mode.
+
+A ready-made agent is defined in `agent-seed.json` — a "ClickHouse Analytics Agent" preloaded with the full schema, partition/TTL rules, and query conventions (always filter on `ts`, prefer `quantile(0.95)` over `avg()` for latency, show counts *and* conversion % for funnels, etc.). Import it into LibreChat to start asking questions like:
+
+- "How many users visited the products page today?"
+- "What's the p95 API latency for `/api/orders` this week?"
+- "Show the checkout conversion funnel for the last 30 days"
+- "Which products get added to cart most often?"
+
+The same schema knowledge lives in `agent-skills/AGENTS.md` as a portable skills doc, so any other agent (or teammate) writing ClickHouse SQL against this data starts from the same playbook.
 
 ## Kubernetes
 
